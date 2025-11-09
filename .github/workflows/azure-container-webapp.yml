@@ -1,0 +1,51 @@
+name: Deploy Web App
+
+on:
+  push:
+    branches:
+      - main  # Run when you push to main
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout your repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Log in to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 3️⃣ Build and tag Docker image
+      - name: Build and tag Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/food-webpage:${{ github.run_id }} .
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/food-webpage:${{ github.run_id }} ${{ secrets.DOCKERHUB_USERNAME }}/food-webpage:latest
+
+      # 4️⃣ Push image to Docker Hub
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/food-webpage:${{ github.run_id }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/food-webpage:latest
+
+      # 5️⃣ Update Kubernetes manifest (optional if ArgoCD syncs automatically)
+      - name: Update deployment manifest
+        run: |
+          sed -i "s|image: .*|image: ${{ secrets.DOCKERHUB_USERNAME }}/food-webpage:${{ github.run_id }}|" kubernetes/deployment.yaml
+          cat kubernetes/deployment.yaml
+
+      # 6️⃣ Commit manifest update (optional if using GitOps with Argo CD)
+      - name: Commit changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add kubernetes/deployment.yaml
+          git commit -m "Update image to run ID ${{ github.run_id }}" || echo "No changes to commit"
+          git push origin main
+
